@@ -1,10 +1,8 @@
 import "./style.css";
 import {mapSize, mapX, mapY, worldMap} from "./world";
 import {setCanvasBackground, clearCanvas, displayFPS, drawLine} from "./utils/canvas";
-import { dist } from "./utils/math";
-
-const SCREEN_WIDTH = 1024;
-const SCREEN_HEIGHT = 512;
+import { calculateHorizontalIntersection, calculateVerticalIntersection, drawWall, getCorrectedDistance, normalizeAngle } from "./utils/raycast";
+import { DR, PI, SCREEN_HEIGHT, SCREEN_WIDTH } from "./utils/constant";
 
 const player = {
   x: 0,
@@ -43,15 +41,6 @@ function init(screen: HTMLCanvasElement) {
   requestAnimationFrame((ts) => gameLoop(ts, ctx));
 }
 
-function benchmark(func, iterations = 1000) {
-  const t0 = performance.now();
-  for (let i = 0; i < iterations; i++) {
-    func();
-  }
-  const t1 = performance.now();
-  return (t1 - t0) / iterations;
-}
-
 function gameLoop(timeStamp: number, ctx: CanvasRenderingContext2D) {
   clearCanvas(ctx);
   setCanvasBackground(ctx, 'grey');
@@ -59,12 +48,10 @@ function gameLoop(timeStamp: number, ctx: CanvasRenderingContext2D) {
   document.addEventListener('keydown', keyboardHandler);
 
   drawMap(ctx, 0, 0);
+
+  drawFloor(ctx, "#7e3464", mapSize * mapX + 8, 160, 60 * 8, SCREEN_HEIGHT - 352);
   
-  // drawRays3D(ctx, player);
-  const time = benchmark(() => drawRays3D_0(ctx, player));
-  const time2 = benchmark(() => drawRays3D_1(ctx, player));
-  const percent = (time - time2) / Math.abs(time2) * 100;
-  console.log(`${time.toFixed(5)} ms - ${time2.toFixed(5)} ms - ${percent.toFixed(2)}%`);
+  drawRays3D(ctx, player);
 
   drawPlayer(ctx, player);
 
@@ -75,13 +62,13 @@ function gameLoop(timeStamp: number, ctx: CanvasRenderingContext2D) {
 function keyboardHandler(event: KeyboardEvent,) {
   if (event.key === 'q') {
     player.angle -= 0.1;
-    if (player.angle < 0) player.angle += 2 * Math.PI
+    if (player.angle < 0) player.angle += 2 * PI
     player.deltaX = Math.cos(player.angle) * 5;
     player.deltaY = Math.sin(player.angle) * 5;
   }
   if (event.key === 'd') {
     player.angle += 0.1;
-    if (player.angle > 2 * Math.PI) player.angle -= 2 * Math.PI
+    if (player.angle > 2 * PI) player.angle -= 2 * PI
     player.deltaX = Math.cos(player.angle) * 5;
     player.deltaY = Math.sin(player.angle) * 5;
   }
@@ -93,6 +80,11 @@ function keyboardHandler(event: KeyboardEvent,) {
     player.y -= player.deltaY;
     player.x -= player.deltaX;
   }
+}
+
+function drawFloor(ctx: CanvasRenderingContext2D, color: string, x: number, y: number, width: number, height: number) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, width, height);
 }
 
 function drawPlayer(ctx: CanvasRenderingContext2D, player: any, color = 'red') {
@@ -121,120 +113,27 @@ function drawMap(ctx: CanvasRenderingContext2D, x: number, y: number) {
   }
 }
 
-function drawRays3D_0(ctx: CanvasRenderingContext2D, player: any) {
-  let x = player.x;
-  let y = player.y;
-  let dx = Math.cos(player.angle);
-  let dy = Math.sin(player.angle);
+function drawRays3D(ctx: CanvasRenderingContext2D, player: any) {
+  let rayAngle = normalizeAngle(player.angle - DR * 30); // Initial ray angle
 
-  // Increment x and y until we hit a wall
-  let i = 0;
-  while (worldMap[Math.floor(y / mapSize) * mapX + Math.floor(x / mapSize)] === 0) {
-      x += dx * 0.1;
-      y += dy * 0.1;
-      i++;
-      if (i > 4000) break;  // Prevent infinite loops
-  }
+    for (let r = 0; r < 60; r++) {
+        // Get intersections and the shortest distance to a wall
+        const { hx, hy, distH } = calculateHorizontalIntersection(player, rayAngle, mapSize, mapX, mapY, worldMap);
+        const { vx, vy, distV } = calculateVerticalIntersection(player, rayAngle, mapSize, mapX, mapY, worldMap);
 
-  drawLine(ctx, player.x, player.y, x, y, 1, 'blue');
-}
+        const finalX = distH < distV ? hx : vx;
+        const finalY = distH < distV ? hy : vy;
+        const distWall = distH < distV ? distH : distV;
+        const color = distH < distV ? '#7d34eb' : '#7e34d2';
 
-function drawRays3D_1(ctx: CanvasRenderingContext2D, player: any) {
-  let r: number, mx: number, my: number, mp: number, dof: number;
-  let rx = 0, ry = 0, ra: number, xo = 0, yo = 0;
+        // Draw ray to wall
+        drawLine(ctx, player.x, player.y, finalX, finalY, 1, 'green');
 
-  ra = player.angle;
+        // Calculate corrected distance and draw the wall slice
+        const correctedDistWall = getCorrectedDistance(player.angle, rayAngle, distWall);
+        drawWall(ctx, r, correctedDistWall, mapSize, color);
 
-  for (r = 0; r < 1; r++) {
-      let distH = 100000, hx=player.x, hy=player.y;
-
-      // --- Check Horizontal Line ---
-      dof = 0; // depth of field
-      const aTan = -1 / Math.tan(ra); // Arctan 
-
-      if (ra > Math.PI) {
-          ry = (Math.floor(player.y / mapSize) * mapSize) - 0.0001; // -0.0001 to avoid rounding errors
-          rx = (player.y - ry) * aTan + player.x;
-          yo = -64;
-          xo = -yo * aTan;
-      } 
-      else if (ra < Math.PI) {
-          ry = (Math.floor(player.y / mapSize) * mapSize) + mapSize; // +mapSize take the next square
-          rx = (player.y - ry) * aTan + player.x;
-          yo = 64;
-          xo = -yo * aTan;          
-      }
-      if (ra === 0 || ra === Math.PI) {
-          rx = player.x;
-          ry = player.y;
-          dof = 8;
-      }
-
-      while (dof < 8) {
-          mx = Math.floor(rx / mapSize);
-          my = Math.floor(ry / mapSize);
-          mp = my * mapX + mx;
-
-          if (mp<mapX*mapY && worldMap[mp] === 1) { 
-            hx = rx;
-            hy = ry;
-            distH = dist(hx, hy, player.x, player.y);
-            break;
-          }
-
-          rx += xo;
-          ry += yo;
-          dof += 1;
-      }
-
-
-      let distV = 100000, vx=player.x, vy=player.y;
-      // --- Check Vertical Line ---
-      dof = 0; // depth of field
-      const nTan = -Math.tan(ra);
-      if (ra > Math.PI / 2 && ra < 3 * Math.PI / 2) {
-          rx = (Math.floor(player.x / mapSize) * mapSize) - 0.0001; // -0.0001 to avoid rounding errors
-          ry = (player.x - rx) * nTan + player.y;
-          xo = -64;
-          yo = -xo * nTan;
-      }
-      else if (ra < Math.PI / 2 || ra > 3 * Math.PI / 2) {
-          rx = (Math.floor(player.x / mapSize) * mapSize) + mapSize; // +mapSize take the next square
-          ry = (player.x - rx) * nTan + player.y;
-          xo = 64;
-          yo = -xo * nTan;
-      }
-      if (ra === Math.PI / 2 || ra === 3 * Math.PI / 2) {
-          rx = player.x;
-          ry = player.y;
-          dof = 8;
-      }
-
-      while (dof < 8) {
-          mx = Math.floor(rx / mapSize);
-          my = Math.floor(ry / mapSize);
-          mp = my * mapX + mx;
-
-          if (mp<mapX*mapY && worldMap[mp] === 1) { 
-            vx = rx;
-            vy = ry;
-            distV = dist(vx, vy, player.x, player.y);
-            break;
-          }
-
-          rx += xo;
-          ry += yo;
-          dof += 1;
-      }
-
-      if (distH < distV) {
-          rx = hx;
-          ry = hy;
-      } else {
-          rx = vx;
-          ry = vy;
-      }
-
-      drawLine(ctx, player.x, player.y, rx, ry, 1, 'orange');
-  }
+        // Increment and normalize the ray angle for the next column
+        rayAngle = normalizeAngle(rayAngle + DR);
+    }
 }
