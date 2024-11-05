@@ -2,6 +2,8 @@
 
 This projet aims to learn more about raycasting by implementing a simple raycasting engine in TypeScript.
 
+![Raycasting](./images/image.png)
+
 Try it out [here](https://matthieuflaceliere.github.io/RaycastingJS/).
 
 ## How to run
