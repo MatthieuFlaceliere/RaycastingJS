@@ -12,6 +12,8 @@ const player = {
   deltaY: 0,
 };
 
+const keys: { [key: string]: boolean } = {};
+
 function main() {
   const screen = document.querySelector<HTMLCanvasElement>("#screen");
 
@@ -20,8 +22,8 @@ function main() {
   // set initial values for player
   player.x = 200;
   player.y = 200;
-  player.deltaX = Math.cos(player.angle) * 5;
-  player.deltaY = Math.sin(player.angle) * 5;
+  player.deltaX = Math.cos(player.angle) * 3;
+  player.deltaY = Math.sin(player.angle) * 3;
   init(screen);
 }
 main();
@@ -45,7 +47,15 @@ function gameLoop(timeStamp: number, ctx: CanvasRenderingContext2D) {
   clearCanvas(ctx);
   setCanvasBackground(ctx, 'grey');
 
-  document.addEventListener('keydown', keyboardHandler);
+  window.addEventListener("keydown", (event) => {
+    keys[event.key] = true;
+  });
+
+  window.addEventListener("keyup", (event) => {
+    keys[event.key] = false;
+  });
+
+  keyboardHandler();
 
   drawMap(ctx, 0, 0);
 
@@ -59,24 +69,24 @@ function gameLoop(timeStamp: number, ctx: CanvasRenderingContext2D) {
   requestAnimationFrame((ts) => gameLoop(ts, ctx));
 }
 
-function keyboardHandler(event: KeyboardEvent,) {
-  if (event.key === 'q') {
-    player.angle -= 0.1;
-    if (player.angle < 0) player.angle += 2 * PI
-    player.deltaX = Math.cos(player.angle) * 5;
-    player.deltaY = Math.sin(player.angle) * 5;
+function keyboardHandler() {
+  if (keys['q']) {
+    player.angle -= 0.05;
+    if (player.angle < 0) player.angle += 2 * PI;
+    player.deltaX = Math.cos(player.angle) * 3;
+    player.deltaY = Math.sin(player.angle) * 3;
   }
-  if (event.key === 'd') {
-    player.angle += 0.1;
-    if (player.angle > 2 * PI) player.angle -= 2 * PI
-    player.deltaX = Math.cos(player.angle) * 5;
-    player.deltaY = Math.sin(player.angle) * 5;
+  if (keys['d']) {
+    player.angle += 0.05;
+    if (player.angle > 2 * PI) player.angle -= 2 * PI;
+    player.deltaX = Math.cos(player.angle) * 3;
+    player.deltaY = Math.sin(player.angle) * 3;
   }
-  if (event.key === 'z') {
+  if (keys['z']) {
     player.y += player.deltaY;
     player.x += player.deltaX;
   }
-  if (event.key === 's') {
+  if (keys['s']) {
     player.y -= player.deltaY;
     player.x -= player.deltaX;
   }
